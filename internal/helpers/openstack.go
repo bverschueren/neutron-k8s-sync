@@ -49,7 +49,7 @@ func NewNetworkClient(ctx context.Context) (*gophercloud.ServiceClient, error) {
 func NodeProviderID(node corev1.Node) (string, error) {
 	// providerID: openstack:///UUID
 	parts := strings.Split(node.Spec.ProviderID, "/")
-	if len(parts) == 0 {
+	if len(parts) <= 1 {
 		return "", fmt.Errorf("invalid providerID")
 	}
 	return parts[len(parts)-1], nil
