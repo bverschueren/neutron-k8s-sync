@@ -24,7 +24,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
@@ -35,6 +34,7 @@ import (
 
 	openstackv1alpha1 "github.com/bverschueren/neutron-k8s-sync/api/v1alpha1"
 	"github.com/bverschueren/neutron-k8s-sync/internal/helpers"
+	osclients "github.com/bverschueren/neutron-k8s-sync/internal/openstack"
 )
 
 var (
@@ -58,7 +58,8 @@ var (
 
 type OpenStackLoadBalanceServiceReconciler struct {
 	client.Client
-	Scheme    *runtime.Scheme
+	osclient osclients.NetworkClient
+
 	Config    *rest.Config
 	dynClient dynamic.Interface
 
@@ -67,6 +68,12 @@ type OpenStackLoadBalanceServiceReconciler struct {
 
 	poolCache map[string][]string
 	poolLock  sync.RWMutex
+}
+
+func NewOpenStackLoadBalanceServiceReconciler(client client.Client) *OpenStackLoadBalanceServiceReconciler {
+	return &OpenStackLoadBalanceServiceReconciler{
+		Client: client,
+	}
 }
 
 func (r *OpenStackLoadBalanceServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -127,6 +134,11 @@ func (r *OpenStackLoadBalanceServiceReconciler) startInformers(ctx context.Conte
 		metav1.NamespaceAll,
 		nil,
 	)
+
+	providerClient, endpointOpts, err := osclients.NewProviderClient(ctx)
+	netClient, err := osclients.NewNetworkClient(providerClient, endpointOpts)
+
+	r.osclient = netClient
 
 	l2Informer := factory.ForResource(l2GVR).Informer()
 	bgpInformer := factory.ForResource(bgpGVR).Informer()
@@ -229,7 +241,7 @@ func (r *OpenStackLoadBalanceServiceReconciler) applyAdvertisement(
 	}
 
 	for _, n := range nodes.Items {
-		if err := helpers.UpdateAllowedAddressPairs(ctx, n, addIPs, delIPs); err != nil {
+		if err := helpers.UpdateAllowedAddressPairs(ctx, r.osclient, n, addIPs, delIPs); err != nil {
 			log.Error(err, "update allowed address pairs", "node", n.Name)
 		}
 	}

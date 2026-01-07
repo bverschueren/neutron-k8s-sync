@@ -80,10 +80,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controller.OpenStackLoadBalanceServiceReconciler{
-		Client: manager.GetClient(),
-		Scheme: manager.GetScheme(),
-	}).SetupWithManager(manager); err != nil {
+	if err = controller.NewOpenStackLoadBalanceServiceReconciler(
+		manager.GetClient(),
+	).SetupWithManager(manager); err != nil {
 		setupLog.Error(err, "unable to create OpenStackLoadBalanceService controller")
 		os.Exit(1)
 	}

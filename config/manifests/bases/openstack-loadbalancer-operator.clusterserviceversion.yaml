@@ -1,0 +1,47 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: openstack-loadbalancer-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: OpenStackLoadBalanceService is the Schema for the API
+      displayName: Open Stack Load Balance Service
+      kind: OpenStackLoadBalanceService
+      name: openstackloadbalanceservices.openstack.example.com
+      version: v1alpha1
+  description: Synchronize Neutron for MetalLB on OpenShift-on-OpenStack deployments.
+  displayName: MetalLB OpenShift-on-OpenStack sync
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - openshift-on-openstack
+  - metallb
+  - neutron
+  links:
+  - name: Openstack Loadbalancer Operator
+    url: https://openstack-loadbalancer-operator.domain
+  maturity: alpha
+  provider:
+    name: bverschueren
+    url: github.com/bverschueren
+  version: 0.0.0
