@@ -24,18 +24,26 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/dynamic/dynamicinformer"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	ctrl "sigs.k8s.io/controller-runtime"
+
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 
 	openstackv1alpha1 "github.com/bverschueren/neutron-k8s-sync/api/v1alpha1"
 	"github.com/bverschueren/neutron-k8s-sync/internal/helpers"
+	osclients "github.com/bverschueren/neutron-k8s-sync/internal/openstack"
 )
+
+// +kubebuilder:rbac:groups=openstack.example.com,resources=openstackloadbalanceservices,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=openstack.example.com,resources=openstackloadbalanceservices/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=metallb.io,resources=l2advertisements,verbs=get;list;watch
+// +kubebuilder:rbac:groups=metallb.io,resources=bgpadvertisements,verbs=get;list;watch
+// +kubebuilder:rbac:groups=metallb.io,resources=ipaddresspools,verbs=get;list;watch
 
 var (
 	l2GVR = schema.GroupVersionResource{
@@ -56,9 +64,15 @@ var (
 	}
 )
 
+const (
+	DefaultCloudName  = "openstack"
+	DefaultSecretName = "openstack-credentials"
+)
+
 type OpenStackLoadBalanceServiceReconciler struct {
 	client.Client
-	Scheme    *runtime.Scheme
+	osclient osclients.NetworkClient
+
 	Config    *rest.Config
 	dynClient dynamic.Interface
 
@@ -67,6 +81,14 @@ type OpenStackLoadBalanceServiceReconciler struct {
 
 	poolCache map[string][]string
 	poolLock  sync.RWMutex
+
+	namesppace string
+}
+
+func NewOpenStackLoadBalanceServiceReconciler(client client.Client) *OpenStackLoadBalanceServiceReconciler {
+	return &OpenStackLoadBalanceServiceReconciler{
+		Client: client,
+	}
 }
 
 func (r *OpenStackLoadBalanceServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -81,7 +103,7 @@ func (r *OpenStackLoadBalanceServiceReconciler) Reconcile(
 	ctx context.Context,
 	req ctrl.Request,
 ) (ctrl.Result, error) {
-	log := ctrl.Log.WithName("osplbreconciler")
+	log := log.FromContext(ctx)
 
 	var list openstackv1alpha1.OpenStackLoadBalanceServiceList
 	if err := r.List(ctx, &list); err != nil {
@@ -94,12 +116,19 @@ func (r *OpenStackLoadBalanceServiceReconciler) Reconcile(
 		return ctrl.Result{}, nil
 	}
 
+	if len(list.Items) > 1 {
+		log.Info("Multiple OpenStackLoadBalanceService present, ignoring")
+		return ctrl.Result{}, nil
+	}
+
+	namespace := list.Items[0].Namespace
+
 	log.Info("OpenStackLoadBalanceService present, ensuring MetalLB informers running")
-	r.startInformers(ctx)
+	r.startInformers(ctx, namespace)
 	return ctrl.Result{}, nil
 }
 
-func (r *OpenStackLoadBalanceServiceReconciler) startInformers(ctx context.Context) {
+func (r *OpenStackLoadBalanceServiceReconciler) startInformers(ctx context.Context, namespace string) {
 	r.informerLock.Lock()
 	defer r.informerLock.Unlock()
 
@@ -107,7 +136,7 @@ func (r *OpenStackLoadBalanceServiceReconciler) startInformers(ctx context.Conte
 		return
 	}
 
-	log := ctrl.Log.WithName("metallb-informers")
+	log := log.FromContext(ctx)
 
 	dynClient, err := dynamic.NewForConfig(r.Config)
 	if err != nil {
@@ -127,6 +156,20 @@ func (r *OpenStackLoadBalanceServiceReconciler) startInformers(ctx context.Conte
 		metav1.NamespaceAll,
 		nil,
 	)
+
+	providerClientFactory := osclients.NewProviderClientFactory(r.Client, DefaultCloudName, namespace, DefaultSecretName)
+	providerClient, endpointOpts, err := providerClientFactory.NewProviderClient(ctx)
+	if err != nil {
+		log.Error(err, "failed to create provider client")
+		return
+	}
+	netClient, err := osclients.NewNetworkClient(providerClient, endpointOpts)
+	if err != nil {
+		log.Error(err, "failed to create network client")
+		return
+	}
+
+	r.osclient = netClient
 
 	l2Informer := factory.ForResource(l2GVR).Informer()
 	bgpInformer := factory.ForResource(bgpGVR).Informer()
@@ -174,7 +217,7 @@ func (r *OpenStackLoadBalanceServiceReconciler) applyAdvertisement(
 	newObj interface{},
 	oldObj interface{},
 ) {
-	log := ctrl.Log.WithName("advertisement")
+	log := log.FromContext(ctx)
 
 	var newSel map[string]string
 	var newAddresses, oldAddresses []string
@@ -229,7 +272,7 @@ func (r *OpenStackLoadBalanceServiceReconciler) applyAdvertisement(
 	}
 
 	for _, n := range nodes.Items {
-		if err := helpers.UpdateAllowedAddressPairs(ctx, n, addIPs, delIPs); err != nil {
+		if err := helpers.UpdateAllowedAddressPairs(ctx, r.osclient, n, addIPs, delIPs); err != nil {
 			log.Error(err, "update allowed address pairs", "node", n.Name)
 		}
 	}

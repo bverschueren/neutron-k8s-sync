@@ -2,7 +2,7 @@ apiVersion: openstack.example.com/v1alpha1
 kind: OpenStackLoadBalanceService
 metadata:
   labels:
-    app.kubernetes.io/name: openstack-loadbalancer-operator
+    app.kubernetes.io/name: metallb-neutron-sync
     app.kubernetes.io/managed-by: kustomize
   name: openstackloadbalanceservice-sample
 spec:

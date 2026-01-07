@@ -1,0 +1,47 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: metallb-neutron-sync.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: OpenStackLoadBalanceService is the Schema for the API
+      displayName: Open Stack Load Balance Service
+      kind: OpenStackLoadBalanceService
+      name: openstackloadbalanceservices.openstack.example.com
+      version: v1alpha1
+  description: Synchronize Neutron resources with MetalLB advertisements on K8S.
+  displayName: MetalLB Neutron Sync
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - MetalLB
+  - Neutron
+  - K8S-on-OSP
+  links:
+  - name: Metallb Neutron Sync
+    url: https://metallb-neutron-sync.domain
+  maturity: alpha
+  provider:
+    name: bverschueren
+    url: github.com/bverschueren
+  version: 0.0.0

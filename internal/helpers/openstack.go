@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	osclients "github.com/bverschueren/neutron-k8s-sync/internal/openstack"
 	"github.com/gophercloud/gophercloud/v2"
 	"github.com/gophercloud/gophercloud/v2/openstack"
 	"github.com/gophercloud/gophercloud/v2/openstack/config"
@@ -57,29 +58,21 @@ func NodeProviderID(node corev1.Node) (string, error) {
 
 func UpdateAllowedAddressPairs(
 	ctx context.Context,
+	netClient osclients.NetworkClient,
 	node corev1.Node,
 	addIPs []string,
 	delIPs []string,
 ) error {
 	log := ctrl.Log.WithName("openstack-neutron")
-	netClient, err := NewNetworkClient(ctx)
-	if err != nil {
-		return err
-	}
 
 	serverID, err := NodeProviderID(node)
 	if err != nil {
 		return err
 	}
 
-	allPages, err := ports.List(netClient, ports.ListOpts{
+	ps, err := netClient.ListPorts(ctx, ports.ListOpts{
 		DeviceID: serverID,
-	}).AllPages(context.Background())
-	if err != nil {
-		return err
-	}
-
-	ps, err := ports.ExtractPorts(allPages)
+	})
 	if err != nil {
 		return err
 	}
@@ -103,9 +96,10 @@ func UpdateAllowedAddressPairs(
 		}
 
 		log.V(1).Info("updating to", "AllowedAddressPairs", &updated, "portID", p.ID)
-		_, err := ports.Update(ctx, netClient, p.ID, ports.UpdateOpts{
+
+		_, err := netClient.UpdatePort(ctx, p.ID, ports.UpdateOpts{
 			AllowedAddressPairs: &updated,
-		}).Extract()
+		})
 		if err != nil {
 			return err
 		}
